@@ -1,9 +1,4 @@
----
-name: NubeCont Automatización SUNAT
-description: Sistema automatizado para procesamiento de comprobantes PDF de Ventas, validación masiva en tiempo real de RUC/DNI en SUNAT y exportación a Excel para NubeCont.
----
-
-# NubeCont Automatización SUNAT
+# Nubecont Automatización
 
 Sistema de escritorio que automatiza el registro de **Ventas** en NubeCont: extrae datos de facturas y boletas PDF, valida RUC/DNI en tiempo real contra SUNAT, genera un reporte Excel consolidado y un archivo secundario con clientes únicos para importación masiva.
 
