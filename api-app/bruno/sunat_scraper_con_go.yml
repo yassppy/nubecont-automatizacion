@@ -1,0 +1,30 @@
+info:
+  name: sunat_scraper_con_go
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:7860/api/v1/validar-lote
+  body:
+    type: json
+    data: |-
+      {
+        "documents": [
+          {
+            "num_doc": "20100070970",
+            "tipo_doc": "RUC"
+          },
+          {
+            "num_doc": "48992773",
+            "tipo_doc": "DNI"
+          }
+        ]
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

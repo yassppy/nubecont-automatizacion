@@ -1,0 +1,7 @@
+{
+  "venvPath": "app",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "reportGeneralTypeIssues": false,
+  "reportMissingModuleSource": false,
+}
