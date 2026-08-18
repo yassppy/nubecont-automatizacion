@@ -40,6 +40,8 @@ WAIT 2
 WAIT 2
         MouseAndKeyboard.SendKeys.FocusAndSendKeys TextToSend: $fx'{Enter}' DelayBetweenKeystrokes: $fx'=10' SendTextAsHardwareKeys: False
         WebAutomation.SetDropDownListValue.SetDropDownListValueByName BrowserInstance: $fx'=Browser' Control: appmask['Web Page \'https://nubecont.com/sales/new\'']['Select \'Elegir\''] OptionNames: $fx'=[Moneda]' UseRegularExpression: False WaitForPageToLoadTimeout: $fx'=60'
+        @@source: 'Recorder'
+WAIT 2
         WebAutomation.SetDropDownListValue.SetDropDownListValueByName BrowserInstance: $fx'=Browser' Control: appmask['Web Page \'https://nubecont.com/sales/new\'']['Select \'Día\' 3'] OptionNames: $fx'=Dia' UseRegularExpression: False WaitForPageToLoadTimeout: $fx'=60'
         @@source: 'Recorder'
 WAIT 2
@@ -58,6 +60,8 @@ WAIT 2
         @@source: 'Recorder'
 WAIT 2
         WebAutomation.PressButton.PressButton BrowserInstance: $fx'=Browser' Control: appmask['Web Page \'https://nubecont.com/sales/new\'']['Input submit \'Aceptar y nueva venta\''] WaitForPageToLoadTimeout: $fx'=60'
+        @@source: 'Recorder'
+WAIT 2
         DISABLE Display.ShowMessageDialog.ShowMessage Title: $fx'Verificar' Icon: Display.Icon.None Buttons: Display.Buttons.OK DefaultButton: Display.DefaultButton.Button1 IsTopMost: False ButtonPressed=> ButtonPressed2
         Variables.IncreaseVariable Value: $fx'=variable' IncrementValue: $fx'1'
     @@copilotGeneratedAction: 'True'

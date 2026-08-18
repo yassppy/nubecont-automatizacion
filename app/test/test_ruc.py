@@ -10,7 +10,7 @@ RUC: 20601234567
 Valor Unitario: 201.694915254
 """
 
-TEXTO_FACTURA_BOLETA = """
+TEXTO_BOLETA = """
 TALLEDO CALDAS MARCOS ALEJANDRO
 RUC: 10752788787
 FACTURA ELECTRONICA E001-645
@@ -53,7 +53,7 @@ def test_extract_ruc_compras():
 
 
 def test_extract_sin_cliente():
-    assert extract_ruc(TEXTO_FACTURA_BOLETA, es_venta=True) == "00000000"
+    assert extract_ruc(TEXTO_BOLETA, es_venta=True) == "00000000"
 
 
 def test_extract_con_dni():

@@ -29,6 +29,66 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def generate_unique_docs_file(
+    input_excel: Path,
+    output_dir: Path,
+    tipo_op: str,
+    empresa: str,
+    anio: str,
+    mes: str,
+) -> Path | None:
+    """Extrae los RUCs/DNIs únicos de la columna 'Doc. Cliente' o 'RUC Emisor',
+
+    elimina '00000000' y valores nulos/inválidos, y genera un Excel con los
+    datos en la Columna A.
+    """
+    try:
+        df = pd.read_excel(input_excel)
+
+        col_target = "Doc. Cliente" if tipo_op.upper() == "VENTAS" else "RUC Emisor"
+
+        if col_target not in df.columns:
+            logger.warning(
+                "No se encontró la columna '%s' para extraer los documentos únicos.",
+                col_target,
+            )
+            return None
+
+        # Clean y normalizar valores a texto
+        series_docs = df[col_target].astype(str).str.strip()
+
+        # Filtrar ceros, nulos, 'NO ENCONTRADO', etc.
+        invalid_values = {
+            "00000000",
+            "nan",
+            "NONE",
+            "",
+            "NO ENCONTRADO",
+            "None",
+            "0",
+        }
+        filtered = series_docs[~series_docs.isin(invalid_values)]
+
+        # Eliminar duplicados manteniendo solo únicos
+        unique_docs = filtered.drop_duplicates().reset_index(drop=True)
+
+        # Crear nuevo DataFrame con una sola columna (queda en Columna A)
+        col_name = "Doc. Cliente" if tipo_op.upper() == "VENTAS" else "RUC Emisor"
+        df_result = pd.DataFrame({col_name: unique_docs})
+
+        output_path = (
+            output_dir / f"Doc_Unicos_{tipo_op.upper()}_{empresa}_{anio}_{mes}.xlsx"
+        )
+        df_result.to_excel(output_path, index=False)
+
+        logger.info("Archivo de documentos únicos generado en: %s", output_path)
+        return output_path
+
+    except Exception as err:
+        logger.error("Error al generar el archivo de documentos únicos: %s", err)
+        return None
+
+
 def process_single_pdf(pdf_path: Path) -> dict[str, str]:
     """Lee el texto completo del PDF con PyMuPDF y extrae todos los campos."""
     text = ""
@@ -82,7 +142,7 @@ def process_directory(
     anio: str,
     mes: str,
 ) -> Path:
-    """Escanea la carpeta origen, procesa los PDF, valida entidades en la API y guarda el Excel."""
+    """Escanea los PDF, genera el Excel primero y luego intenta enriquecerlo con la API Go."""
     input_dir = Path(input_folder_path)
     output_dir = Path(output_folder_path)
 
@@ -98,8 +158,35 @@ def process_directory(
     # 1. Extracción de datos base desde los PDF
     records = [process_single_pdf(pdf) for pdf in pdf_files]
 
-    # 2. Construcción de lote ÚNICO según tipo de operación
-    # Ventas -> Valida Doc. Cliente (RUC/DNI) | Compras -> Valida RUC Emisor
+    # Asignar nombres de columna dinámicos
+    label_nombre = (
+        "Nombre / Razón Social Cliente" if es_venta else "Nombre / Razón Social Emisor"
+    )
+    label_estado = "Estado Cliente" if es_venta else "Estado Emisor"
+    label_condicion = "Condición Cliente" if es_venta else "Condición Emisor"
+
+    # Inicializar columnas de validación por defecto en los registros
+    for rec in records:
+        if not es_venta:
+            rec.pop("Nombre / Razón Social Cliente", None)
+            rec.pop("Estado Cliente", None)
+            rec.pop("Condición Cliente", None)
+
+        rec[label_nombre] = "PENDIENTE / NO CONSULTADO"
+        rec[label_estado] = "-"
+        rec[label_condicion] = "-"
+
+    filename = f"Reporte_{tipo_op.upper()}_{empresa}_{anio}_{mes}.xlsx"
+    output_excel = output_dir / filename
+
+    # =========================================================================
+    # PASO CRÍTICO: Guardar el Excel Inmediatamente ANTES de llamar a la API
+    # =========================================================================
+    df = pd.DataFrame(records)
+    df.to_excel(output_excel, index=False)
+    logger.info(f"Excel inicial creado exitosamente en: {output_excel}")
+
+    # 2. Construcción de lote ÚNICO según tipo de operación para consultar a la API
     docs_to_query: list[dict[str, str]] = []
     seen_docs: set[str] = set()
 
@@ -120,45 +207,34 @@ def process_directory(
             docs_to_query.append({"num_doc": doc_num, "tipo_doc": doc_tipo})
             seen_docs.add(doc_num)
 
-    # 3. Consulta a la API de Go únicamente con los documentos del lote
-    sunat_results = validate_documents_batch(docs_to_query) if docs_to_query else {}
+    # 3. Intentar consultar a la API de Go sin bloquear la creación del archivo
+    if docs_to_query:
+        try:
+            sunat_results = validate_documents_batch(docs_to_query)
+        except Exception as err:
+            logger.error(f"La API de Go falló o demoró demasiado: {err}")
+            sunat_results = {}
 
-    # 4. Asignación de los resultados de SUNAT al Excel
-    label_nombre = (
-        "Nombre / Razón Social Cliente" if es_venta else "Nombre / Razón Social Emisor"
-    )
-    label_estado = "Estado Cliente" if es_venta else "Estado Emisor"
-    label_condicion = "Condición Cliente" if es_venta else "Condición Emisor"
+        if sunat_results:
+            # 4. Si la API devolvió resultados, actualizar los datos y re-guardar el Excel
+            for rec in records:
+                doc_key = rec.get("Doc. Cliente") if es_venta else rec.get("RUC Emisor")
 
-    for rec in records:
-        doc_key = rec.get("Doc. Cliente") if es_venta else rec.get("RUC Emisor")
+                if doc_key in ("00000000", "NO ENCONTRADO"):
+                    rec[label_nombre] = (
+                        "VENTA MENOR / PÚBLICO GENERAL" if es_venta else "NO ENCONTRADO"
+                    )
+                elif doc_key in sunat_results and sunat_results[doc_key].get("success"):
+                    info = sunat_results[doc_key]
+                    rec[label_nombre] = info.get("nombre", "SIN NOMBRE")
+                    rec[label_estado] = info.get("estado", "-")
+                    rec[label_condicion] = info.get("condicion", "-")
+                else:
+                    rec[label_nombre] = "NO VALIDADO"
 
-        if doc_key in ("00000000", "NO ENCONTRADO"):
-            rec[label_nombre] = (
-                "VENTA MENOR / PÚBLICO GENERAL" if es_venta else "NO ENCONTRADO"
-            )
-            rec[label_estado] = "-"
-            rec[label_condicion] = "-"
-        elif doc_key in sunat_results and sunat_results[doc_key].get("success"):
-            info = sunat_results[doc_key]
-            rec[label_nombre] = info.get("nombre", "SIN NOMBRE")
-            rec[label_estado] = info.get("estado", "-")
-            rec[label_condicion] = info.get("condicion", "-")
-        else:
-            rec[label_nombre] = "NO VALIDADO"
-            rec[label_estado] = "NO VALIDADO"
-            rec[label_condicion] = "NO VALIDADO"
-
-        # Limpiar columnas por defecto en Compras para renombrarlas adecuadamente
-        if not es_venta:
-            rec.pop("Nombre / Razón Social Cliente", None)
-            rec.pop("Estado Cliente", None)
-            rec.pop("Condición Cliente", None)
-
-    # 5. Generación del reporte Excel
-    df = pd.DataFrame(records)
-    filename = f"Reporte_{tipo_op.upper()}_{empresa}_{anio}_{mes}.xlsx"
-    output_excel = output_dir / filename
-    df.to_excel(output_excel, index=False)
+            # Sobrescribir el Excel con las validaciones obtenidas
+            df_updated = pd.DataFrame(records)
+            df_updated.to_excel(output_excel, index=False)
+            logger.info("Excel actualizado con los datos de la API SUNAT.")
 
     return output_excel

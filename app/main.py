@@ -25,7 +25,7 @@ def _get_api_binary_path() -> Path:
     """Determina la ruta del ejecutable de la API Go según el entorno."""
     binary_name = "api_sunat.exe" if sys.platform == "win32" else "api_sunat"
 
-    # Si está empaquetado con PyInstaller, busca junto al .exe principal
+    # En ejecutable (frozen), busca en el directorio donde reside el .exe
     if getattr(sys, "frozen", False):
         base_dir = Path(sys.executable).parent
     else:
